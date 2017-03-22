@@ -1,0 +1,361 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ * A module extends Drupal functionality
+ *
+ */
+
+/**
+ * Implements hook_help().
+ */
+
+function medteh_help($path, $arg) {
+  if ($path == 'admin/help#medteh') {
+    return t('Medteh module.');
+  }
+}
+
+
+
+/**
+ * Implement hook_menu().
+ */
+function medteh_menu() {
+  $items = array();
+
+  $items['admin/config/medteh'] = array(
+    'title' => 'Medteh Configuration',
+    'description' => 'Configuration for the Medteh module.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('medteh_config_form'),
+    'access arguments' => array('administer users'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  return $items;
+}
+
+
+
+function medteh_config_form_validate($form, &$form_state) {
+ 
+  //dpm($form_state['values']['enable_order_form']);
+  variable_set('medteh_enable_order_form', $form_state['values']['enable_order_form']);
+  
+}
+
+
+function medteh_config_form($form, &$form_state) {
+
+  $form['enable_order_form'] = array(
+    '#type' => 'checkbox',
+    '#default_value' => variable_get('medteh_enable_order_form', FALSE),
+    '#title' => t('Enable Order Form'),
+    '#description' => '',
+  );
+    
+
+  return system_settings_form($form);
+}
+
+
+
+/**
+ * Implements hook_node_view().
+ */ 
+
+function medteh_node_view($node, $view_mode, $langcode) {
+	if (variable_get('medteh_enable_order_form', FALSE) &&
+			$node->type == 'product' && $view_mode == 'full') 
+	{
+		$form = drupal_get_form('medteh_order_form');
+   
+        $node->content['medteh_order_form'] = array(
+  			'#markup' => drupal_render($form),
+  			'#weight' => 10,
+		);
+
+		drupal_add_css(
+			drupal_get_path('module', 'medteh') . '/medteh.css', 
+			array('group' => CSS_DEFAULT, 'type' => 'file')
+		);
+
+		
+	}
+}
+
+
+
+
+function medteh_order_form($form, &$form_submit) {
+  	$form = array();
+	$form['#prefix'] = '<div class="clearfix"></div><h2 id="order-form-header">'.t('Make Order').'</h2>';
+	//$form['#suffix'] = '</div>';
+
+    
+    $nid = arg(1);
+    $node = node_load($nid);
+
+    $form['name']=array(
+        '#type'=>'textfield',
+        '#required'=>false,
+        '#default_value'=>'' . (isset($_SESSION['name']))?$_SESSION['name']:'',
+        '#title'=>t('Your name'),
+        '#size'=>60,
+        '#maxlength'=>128,
+        '#weight'=>1);
+
+    $form['email']=array(
+        '#type'=>'textfield',
+        '#required'=>true,
+        '#title'=>t('E-mail address'),
+        '#default_value'=>'' . (isset($_SESSION['email']))?$_SESSION['email']:'',
+        '#size'=>60,
+        '#maxlength'=>128,
+        '#weight'=>2);
+    
+    $form['phone']=array(
+        '#type'=>'textfield',
+        '#required'=>true,
+        '#default_value'=>'' . (isset($_SESSION['phone']))?$_SESSION['phone']:'',
+        '#title'=>t('Phone'),
+        '#size'=>60,
+        '#maxlength'=>128,
+        '#weight'=>3);
+
+    $form['message']=array(
+        '#type'=>'textarea',
+        '#required'=>true,
+        '#default_value'=>$node->title,
+        '#title'=>t('Message'),
+        '#size'=>60,
+        '#maxlength'=>128,
+        '#weight'=>4);
+
+/*
+
+    $form['captcha'] = array(
+       '#type' => 'captcha',
+       '#captcha_type' => 'image_captcha/Image',
+       '#weight'=>5,
+    );
+
+*/
+ 
+    $form['submit']=array(
+        '#type'=>'submit',
+        '#value'=>t('Send'),
+        '#weight'=>6);
+    
+
+	return $form;
+}
+
+function medteh_order_form_validate($form, &$form_state) {
+	$mail = $form_state['values']['email'];
+	if (!valid_email_address($mail)) {
+  		form_set_error('', t('%email is not a valid e-mail address.', array(
+    		'%email' => $mail)));
+	}
+
+    /*
+	
+	$phone = $form_state['values']['phone'];
+	if(!preg_match("/^\+?3?\(?[0-9]{0,3}\)?[0-9]{9,12}$/", $phone)) {
+		form_set_error('', t('The phone appears to be invalid.'));
+	}
+    
+    */
+
+}
+
+function medteh_order_form_submit($form, &$form_state) {
+  	$to = variable_get('site_mail', "info@medteh.biz");
+  	$from = $form_state['values']['email'];
+
+  	$nid = arg(1);
+    $node = node_load($nid);
+ 
+  	$subject = t("Application") . ": ".$node->title;
+  	
+  	$body = t("Name") . ": " . $form_state['values']['name'] . "\n";
+  	$body .= t("Phone") . ": " . $form_state['values']['phone'] . "\n";
+  	$body .= t("E-mail address") . ": " . $form_state['values']['email'] . "\n";
+  	$body .= t("Link") . ": " . url("node/$nid", array('absolute' => TRUE)) . "\n";
+  	$body .= "\n" . $form_state['values']['message'];
+  	 
+	$params = array(
+    	'subject' => $subject,
+    	'body' => array($body),
+    );
+
+	drupal_mail('medteh', 'order', $to, language_default(), $params, $from);
+  
+  	drupal_set_message(t("Your message has been sent."));
+
+  	$_SESSION['name'] = $form_state['values']['name'];
+  	$_SESSION['phone'] = $form_state['values']['phone'];
+  	$_SESSION['email'] = $form_state['values']['email'];
+
+}
+
+
+function medteh_mail($key, &$message, $params) {
+  switch ($key) {
+    case 'order':
+      $message['subject'] = $params['subject'];
+      $message['body'] = $params['body'];
+    break;
+  }
+}
+
+
+/**
+ * Implements hook_block_info().
+ */
+function medteh_block_info() {
+  $blocks = array();
+  
+
+  $blocks['products_menu'] = array(
+    'info' => t('A listing of product categories'),
+    'cache' => DRUPAL_CACHE_PER_PAGE,
+  );
+
+  $blocks['products_submenu'] = array(
+    'info' => t('A listing of product subcategories'),
+    'cache' => DRUPAL_CACHE_PER_PAGE,
+  );
+
+
+  
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function medteh_block_view($block_name = '') {
+                                       
+  if ($block_name == 'products_menu') {
+    $terms = taxonomy_get_tree(2, 0, 1);
+    
+    $term_links = array();
+
+    foreach ($terms as $term) {
+      $term_links[] = l($term->name, 'taxonomy/term/' . $term->tid);
+    
+    }
+
+    //kpr(arg(2));
+    
+    $theme_args = array('items' => $term_links, 'type' => 'ul');
+    $content = theme('item_list', $theme_args);
+    
+    $block = array(
+      'subject' => t('Products Catalog'),
+      'content' => $content,
+    );
+    
+    return $block;
+  }
+
+
+  if ($block_name == 'products_submenu' && arg(0) == 'taxonomy' && arg(1) == 'term') {
+    $parent_tid = (int)arg(2);
+
+    $terms = taxonomy_get_tree(2, $parent_tid);
+    
+    // Get the active trail tid-s.
+    $active = $parent_tid;
+    $active_parents = taxonomy_get_parents_all($active);
+    $active_parents_tids = array();
+    
+    foreach ($active_parents as $parent) {
+      $active_parents_tids[] = $parent->tid;
+    }
+    
+    // Build the menu.
+    $term_count = count($terms);
+    $cont = '<ul class="products_submenu">';
+    for ($i = 0; $i < $term_count; $i++) {
+      // Build the classes string.
+      $classes = '';
+      $children = taxonomy_get_children($terms[$i]->tid);
+      $active_trail = in_array($terms[$i]->tid, $active_parents_tids);
+      /*
+      if ($active_trail && $children) $classes .= 'expanded active-trail ';
+      elseif ($active_trail) $classes .= 'active-trail ';
+      elseif ($children) $classes .= 'collapsed ';
+      */
+
+
+      if ($children) {
+        $count = '';
+      } else {
+        $count = ' (' . medteh_count_nodes_term($terms[$i]->tid) . ')';
+      }
+      
+      
+      if ($i == 0) {
+        $cont .= '<li class="first '.$classes.'">'.l($terms[$i]->name, 'taxonomy/term/'.$terms[$i]->tid) . $count;
+
+      } else {
+        
+        if ($terms[$i]->depth == $depth) 
+          $cont .= '</li><li class="'.$classes.'">'.l($terms[$i]->name, 'taxonomy/term/'.$terms[$i]->tid) . $count;
+        
+        elseif ($terms[$i]->depth > $depth) 
+          $cont .= '<ul class="level-'.$terms[$i]->depth.'"><li class="first '.$classes.'">'.l($terms[$i]->name, 'taxonomy/term/'.$terms[$i]->tid) . $count;
+        
+        elseif ($terms[$i]->depth < $depth) {
+          // Add missing end-tags depending of depth level difference.
+          for ($j = $terms[$i]->depth; $j < $depth; $j++) {
+            $cont .= '</li></ul>';
+          }
+          $cont .= '</li><li class="'.$classes.'">'.l($terms[$i]->name, 'taxonomy/term/'.$terms[$i]->tid) . $count;
+        }
+        // If we have reached the last element add all possibly missing end-tags.
+        if (!isset($terms[$i+1])) {
+          for ($j = 0; $j < $terms[$i]->depth; $j++) {
+            $cont .= '</li></ul>';
+          }
+        }
+      }
+      
+      $depth = $terms[$i]->depth;
+    }
+    $cont .= '</li></ul>';
+    
+    
+    $term = taxonomy_term_load($parent_tid);
+
+
+    $block = array(
+        'subject' => $term->name,
+        'content' => $cont,
+    );
+      
+	return $block;
+
+  }
+  
+}
+
+/**
+ * Counts the number of nodes assigned to a term.
+ * @return integer $count - number of nodes
+ * @param integer $tid - term id
+ */
+function medteh_count_nodes_term($tid) {
+  return db_select('taxonomy_index', 'ti')
+            ->condition('tid', (int) $tid)
+            ->countQuery()
+            ->execute()
+            ->fetchField();
+}
+
+
+?>

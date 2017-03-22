@@ -1,0 +1,11 @@
+name = Medteh
+description = Medteh Addons Module
+package = Medteh
+core = 7.x
+
+files[] = medteh.module
+files[] = medteh.install
+
+;dependencies[] = captcha
+
+configure = admin/config/medteh

@@ -1,0 +1,11 @@
+<?php
+
+function medteh_install() {
+      variable_set('medteh_enable_order_form', FALSE);
+}
+ 
+function medteh_uninstall() {
+      variable_del('medteh_enable_order_form');
+}
+
+?>
